@@ -1,0 +1,102 @@
+---
+- hosts: all
+  become: true
+
+  tasks:
+
+    - name: Ensure java is installed
+      yum: 
+        name: 'java'
+        state: latest
+
+    - name: Create Cassandra group
+      group:
+        name: cassandra
+        state: present
+
+    - name: Create Cassandra User
+      user:
+        name: cassandra
+        groups: cassandra
+        shell: /bin/false
+
+    - stat: 
+        path: /opt/apache-cassandra-3.9/
+      register: cassandra_exist
+
+    - name: Download Apache Cassandra
+      get_url: 
+        url: http://archive.apache.org/dist/cassandra/3.9/apache-cassandra-3.9-bin.tar.gz
+        dest: /tmp/apache-cassandra-3.9.tar.gz
+      when: cassandra_exist.stat.exists != True
+
+    - name: Extract Apache Cassandra
+      unarchive:
+        src: /tmp/apache-cassandra-3.9.tar.gz
+        dest: /opt/
+        mode: 0755
+        remote_src: yes
+        owner: cassandra
+        group: cassandra
+      when: cassandra_exist.stat.exists != True
+
+    - name: Copy cassandra.yaml to apache cassandra
+      template: 
+        src: cassandra.yaml.j2
+        dest: /opt/apache-cassandra-3.9/conf/cassandra.yaml
+
+    - name: Ensure that folder owner is correct
+      file:
+        path: /opt/apache-cassandra-3.9/
+        owner: cassandra
+        group: cassandra
+        state: directory
+
+    - name: Cassandra | Create system-wide profile file
+      template: 
+        src: cassandra.sh.j2 
+        dest: /etc/profile.d/cassandra.sh 
+        owner: root 
+        group: root 
+        mode: 0444
+
+    - name: Cassandra | Create systemd configuration file
+      template: 
+        src: cassandra.service.j2 
+        dest: /usr/lib/systemd/system/cassandra.service 
+        owner: root 
+        group: root
+        mode: 0744
+
+    - name: Cassandra | Create folder for cassandra.pid
+      file:
+        path: /var/lib/cassandra/
+        owner: cassandra
+        group: cassandra
+        state: directory
+
+    - name: Cassandra | Enable Service
+      systemd:
+        name: cassandra
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Cassandra | Start Service
+      systemd:
+        name: cassandra
+        state: started
+
+
+    - pause:
+        seconds: 5
+    
+    - name: Copy schema to remote host
+      copy:
+        src: schema.cql
+        dest: /tmp/schema.cql
+
+    - name: Run initial setup
+      shell: cqlsh 192.168.33.3 -f /tmp/schema.cql
+      environment:
+        PATH: /opt/apache-cassandra-3.9/bin:{{ ansible_env.PATH }}
+        CASSANDRA_HOME: /opt/apache-cassandra-3.9

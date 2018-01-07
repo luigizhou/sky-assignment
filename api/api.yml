@@ -1,0 +1,64 @@
+---
+- hosts: all
+  become: true
+  
+  tasks:
+
+    - name: Unarchive node
+      unarchive: 
+        src: node-v8.9.4-linux-x64.tar.xz
+        dest: /usr/local/
+        
+    - name: Set system-wide path variable for node
+      copy:
+        src: node.sh.j2
+        dest: /etc/profile.d/node.sh
+
+    - name: Create node group
+      group:
+        name: node
+        state: present
+
+    - name: Create node User
+      user:
+        name: node
+        groups: node
+        shell: /bin/false
+
+    - name: Copy application code to target vm
+      copy:
+        src: app
+        dest: /opt
+
+    - name: Create systemd configuration file
+      template:
+        src: api.service.j2
+        dest: /usr/lib/systemd/system/api.service
+        owner: root
+        group: root
+        mode: 0744
+
+    - name: Install packages based on package.json.
+      shell: npm install
+      args:
+        chdir: /opt/app
+      environment:
+        PATH: /usr/local/node-v8.9.4-linux-x64/bin:{{ ansible_env.PATH }}
+
+    - name: ensure folder owner is node user
+      file:
+        path: /opt/app/
+        recurse: yes
+        owner: node
+        group: node
+
+    - name:  Enable Service
+      systemd:
+        name: api
+        enabled: yes
+        daemon_reload: yes
+
+    - name: Start Service
+      systemd:
+        name: api
+        state: restarted

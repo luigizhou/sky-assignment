@@ -1,0 +1,13 @@
+[Unit]
+Description=Api
+After=network.target
+
+[Service]
+Type=simple
+User=node
+Group=node
+ExecStart=/usr/local/node-v8.9.4-linux-x64/bin/node /opt/app/api.js
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
